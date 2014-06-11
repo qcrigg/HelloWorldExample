@@ -1,0 +1,31 @@
+<menu xmlns:android="http://schemas.android.com/apk/res/android" >
+
+    <item
+        android:id="@+id/menu_item_android"
+        android:title="Say Hello Android!" />
+    
+    <item
+        android:id="@+id/menu_item_glass"
+        android:title="Say Hello Glass!" />
+    
+    <item
+        android:id="@+id/menu_item_to_me"
+        android:title="Say Hello to me!"
+        android:icon="@drawable/ic_microphone_on_50" />
+    
+    <item
+        android:id="@+id/menu_item_camera"
+        android:title="Take a picture"
+        android:icon="@drawable/ic_camera_50" />
+    
+    <item
+        android:id="@+id/menu_item_reset"
+        android:title="Reset"
+        android:icon="@drawable/ic_no_50" />
+    
+    <item
+        android:id="@+id/menu_item_about"
+        android:title="About"
+        android:icon="@drawable/ic_help_50" />
+
+</menu>
