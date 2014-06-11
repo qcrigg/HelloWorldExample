@@ -46,7 +46,6 @@ public class MainActivity extends Activity {
 
 		// get text view inflated from the layout resource
 		textView = (TextView) findViewById(R.id.textView1);
-		textView.setText("Tap to begin");
 
 		// create gesture detector
 		gestureDetector = createGestureDetector();
@@ -90,23 +89,23 @@ public class MainActivity extends Activity {
 	public boolean onOptionsItemSelected(MenuItem item) {
 		switch (item.getItemId()) {
 		case R.id.menu_item_android:
-			//showMessageAndSpeak("Hello Android!");
+			showMessageAndSpeak("Hello Android!");
 			return true;
 		case R.id.menu_item_glass:
-			//showMessageAndSpeak("Hello Glass!");
+			showMessageAndSpeak("Hello Glass!");
 			return true;
 		case R.id.menu_item_to_me:
-			//onSayHelloToMe();
+			onSayHelloToMe();
 			return true;
 		case R.id.menu_item_camera:
-			//startActivityForResult(new Intent(MediaStore.ACTION_IMAGE_CAPTURE), 200);
+			startActivityForResult(new Intent(MediaStore.ACTION_IMAGE_CAPTURE), 200);
 			break;
 		case R.id.menu_item_reset:
-			//showMessageAndSpeak("Hello world!");
-			//this.findViewById(R.id.backgroundLayout).setBackgroundDrawable(null);
+			showMessageAndSpeak("Hello world!");
+			this.findViewById(R.id.backgroundLayout).setBackgroundDrawable(null);
 			return true;
 		case R.id.menu_item_about:
-			//startActivity(new Intent(this, InfoActivity.class));
+			startActivity(new Intent(this, InfoActivity.class));
 			return true;
 		}
 		return super.onOptionsItemSelected(item);
@@ -117,8 +116,7 @@ public class MainActivity extends Activity {
 		switch (keyCode) {
 		case KeyEvent.KEYCODE_DPAD_CENTER:
 			Log.d(TAG, "Tapped (DPAD_CENTER)");
-			onSayHelloToMe();
-			//openOptionsMenu(); // open the option menu on tap
+			openOptionsMenu(); // open the option menu on tap
 			return true; // return true if you handled this event
 		}
 		return super.onKeyDown(keyCode, event);
@@ -189,8 +187,8 @@ public class MainActivity extends Activity {
 	private void onSayHelloToMe() {
 		// open system voice recognizer
 		Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-		intent.putExtra(RecognizerIntent.EXTRA_PROMPT, "Say something");
-		this.startActivityForResult(intent, 1000);
+		intent.putExtra(RecognizerIntent.EXTRA_PROMPT, "What is your name?");
+		this.startActivityForResult(intent, 100);
 	}
 
 	@Override
@@ -200,8 +198,8 @@ public class MainActivity extends Activity {
 			if(resultCode == Activity.RESULT_OK) {
 				// get results from the voice recognizer
 				List<String> results = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
-				//showMessageAndSpeak( results.get(0));
-				Toast.makeText(this, "Gotcha. Speak again!", Toast.LENGTH_SHORT).show();
+				showMessageAndSpeak("Hello " + results.get(0) + "!");
+				Toast.makeText(this, "Got your name!", Toast.LENGTH_SHORT).show();
 				Log.d(TAG, "Successfully got activity result");
 			} else {
 				Toast.makeText(this, "Cannot get your name!", Toast.LENGTH_SHORT).show();
@@ -226,8 +224,7 @@ public class MainActivity extends Activity {
 	
 	private void showMessageAndSpeak(String message) {
 		textView.setText(message);
-		onSayHelloToMe();
-		//tts.speak(message, TextToSpeech.QUEUE_FLUSH, null);
+		tts.speak(message, TextToSpeech.QUEUE_FLUSH, null);
 	}
 	
 	private void processPictureWhenReady(final String picturePath) {
