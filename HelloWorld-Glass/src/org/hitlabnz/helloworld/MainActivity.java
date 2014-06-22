@@ -12,6 +12,7 @@ import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 
 import android.app.Activity;
 import android.content.Context;
@@ -52,6 +53,8 @@ public class MainActivity extends Activity {
 	public final static int AUDIO_METHOD = BACKGROUND_RECORDER;
 	public boolean STARTED_LISTENING = false;
 	public boolean RESULTS_RECEIVED = false;
+	
+	public ArrayList<String> wordList = new ArrayList<String>();
 	
 	SpeechRecognizer sr;
 	TextView textView;
@@ -103,12 +106,13 @@ public class MainActivity extends Activity {
 		//shut down speech recognition
 		
 		if(sr!=null){
-			sr.cancel();
-			sr.stopListening();
+			//sr.stopListening();
+			//sr.cancel();
 			sr.destroy();
 			Log.d(TAG, "Destroyed sr");
 		}
 		sr = null;
+		
 		super.onDestroy();
 	}
 	
@@ -117,8 +121,8 @@ public class MainActivity extends Activity {
 
 	    Log.i(TAG, "on pause called");
 	    if(sr!=null){
-	        sr.stopListening();
-	        sr.cancel();
+	        //sr.stopListening();
+	        //sr.cancel();
 	        sr.destroy();              
 
 	    }
@@ -126,6 +130,7 @@ public class MainActivity extends Activity {
 
 	    super.onPause();
 	}
+	
 
 	@Override
 	public boolean onCreateOptionsMenu(Menu menu) {
@@ -219,15 +224,24 @@ public class MainActivity extends Activity {
 		}
 	}
 		
-	public void displayWord(){
-		curWord = "";
+	public void pullWords(){
+		String line;
 		try {
-			curWord = reader.readLine();
-		} catch (IOException e) {
+			while((line = reader.readLine()) != null ){
+				wordList.add(line);
+				Log.d(TAG, line);
+			}
+		} catch (IOException e1) {
 			// TODO Auto-generated catch block
-			e.printStackTrace();
+			e1.printStackTrace();
 		}
-		Log.d(TAG, curWord);
+		
+	}
+	
+	public void displayWord(){
+		Random randomGenerator = new Random();
+		int randInt = randomGenerator.nextInt(wordList.size());
+		curWord = wordList.get(randInt);
 		textView.setText(curWord);
 	}
 
@@ -237,6 +251,7 @@ public class MainActivity extends Activity {
 		case KeyEvent.KEYCODE_DPAD_CENTER:
 			Log.d(TAG, "Tapped (DPAD_CENTER)");
 			initiateReader();
+			pullWords();
 			displayWord();
 			if(!STARTED_LISTENING){
 				startListening();
@@ -252,15 +267,15 @@ public class MainActivity extends Activity {
 	public boolean onGenericMotionEvent(MotionEvent event) {
 		switch (event.getAction()) {
 		case MotionEvent.ACTION_DOWN:
-			Log.d(TAG, String.format("Motion ACTION_DOWN: %.1f / %.1f", event.getX(), event.getY()));
+			//Log.d(TAG, String.format("Motion ACTION_DOWN: %.1f / %.1f", event.getX(), event.getY()));
 			// return true if you handled this event
 			break;
 		case MotionEvent.ACTION_MOVE:
-			Log.d(TAG, String.format("Motion ACTION_MOVE: %.1f / %.1f", event.getX(), event.getY()));
+			//Log.d(TAG, String.format("Motion ACTION_MOVE: %.1f / %.1f", event.getX(), event.getY()));
 			// return true if you handled this event
 			break;
 		case MotionEvent.ACTION_UP:
-			Log.d(TAG, String.format("Motion ACTION_UP: %.1f / %.1f", event.getX(), event.getY()));
+			//Log.d(TAG, String.format("Motion ACTION_UP: %.1f / %.1f", event.getX(), event.getY()));
 			// return true if you handled this event
 			break;
 		}
@@ -277,16 +292,16 @@ public class MainActivity extends Activity {
 			@Override
 			public boolean onGesture(Gesture gesture) {
 				if (gesture == Gesture.TAP) {
-					Log.d(TAG, "Gesture.TAP");
+					//Log.d(TAG, "Gesture.TAP");
 					// return true if you handled this event
 				} else if (gesture == Gesture.TWO_TAP) {
-					Log.d(TAG, "Gesture.TWO_TAP");
+					//Log.d(TAG, "Gesture.TWO_TAP");
 					// return true if you handled this event
 				} else if (gesture == Gesture.SWIPE_RIGHT) {
-					Log.d(TAG, "Gesture.SWIPE_RIGHT");
+					//Log.d(TAG, "Gesture.SWIPE_RIGHT");
 					// return true if you handled this event
 				} else if (gesture == Gesture.SWIPE_LEFT) {
-					Log.d(TAG, "Gesture.SWIPE_LEFT");
+					//Log.d(TAG, "Gesture.SWIPE_LEFT");
 					// return true if you handled this event
 				}
 
@@ -296,13 +311,13 @@ public class MainActivity extends Activity {
 		gestureDetector.setFingerListener(new GestureDetector.FingerListener() {
 			@Override
 			public void onFingerCountChanged(int previousCount, int currentCount) {
-				Log.d(TAG, String.format("Finger prev:%d curr:%d", previousCount, currentCount));
+				//Log.d(TAG, String.format("Finger prev:%d curr:%d", previousCount, currentCount));
 			}
 		});
 		gestureDetector.setScrollListener(new GestureDetector.ScrollListener() {
 			@Override
 			public boolean onScroll(float displacement, float delta, float velocity) {
-				Log.d(TAG, String.format("Scroll dis:%.1f delta:%.1f vel:%.1f", displacement, delta, velocity));
+				//Log.d(TAG, String.format("Scroll dis:%.1f delta:%.1f vel:%.1f", displacement, delta, velocity));
 				return false; // return true if you handled this event
 			}
 		});
@@ -344,6 +359,7 @@ public class MainActivity extends Activity {
 		    	//sr.destroy();	
 		    	displayWord();
 		    	RESULTS_RECEIVED = true;
+		    	sr.destroy();
 		    	startListening();
 		    }
 
@@ -406,11 +422,11 @@ public class MainActivity extends Activity {
 		            break;
 		        case SpeechRecognizer.ERROR_RECOGNIZER_BUSY: 
 		            Log.d(TAG, " recogniser busy") ; 
-		            sr.stopListening();
-		            sr.cancel();
-		            sr.destroy();
-		            sr = null;
-		            startListening();
+		            //sr.stopListening();
+		            //sr.cancel();
+		            //sr.destroy();
+		            //sr = null;
+		            //startListening();
 		            break;
 		        case SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS: 
 		            Log.d(TAG, " insufficient permissions") ; 
