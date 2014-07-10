@@ -2,11 +2,14 @@ package org.hitlabnz.helloworld;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.UnsupportedEncodingException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLConnection;
@@ -15,8 +18,19 @@ import java.util.List;
 import java.util.Random;
 import java.util.concurrent.ExecutionException;
 
+import org.apache.http.HttpEntity;
+import org.apache.http.HttpResponse;
+import org.apache.http.NameValuePair;
+import org.apache.http.client.ClientProtocolException;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.entity.UrlEncodedFormEntity;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.impl.client.DefaultHttpClient;
+import org.apache.http.message.BasicNameValuePair;
+import org.apache.http.util.EntityUtils;
 import org.json.JSONException;
 import org.json.JSONObject;
+import org.json.JSONStringer;
 
 import android.app.Activity;
 import android.content.Context;
@@ -40,34 +54,31 @@ import android.widget.Toast;
 import com.google.android.glass.media.Sounds;
 import com.google.android.glass.touchpad.Gesture;
 import com.google.android.glass.touchpad.GestureDetector;
+import com.google.android.gms.internal.br;
 
 public class MainActivity extends Activity {
 
 	public final static String TAG = MainActivity.class.getSimpleName();
-	public final String InputFileName = "eng.txt";
+	
+	public final String InputFileName = "eng.txt"; //eng.txt, temporarily changing to ar.txt
+	public final String InputFileName_ar = "ar.txt";
+	
 	public final String pref_language = "en-us";
+	
 	public final static int SPEECH_PROMPT = 1;
 	public static int BACKGROUND_RECORDER = 2;
 	
 	public final static int AUDIO_METHOD = BACKGROUND_RECORDER;
+	
 	public boolean STARTED_LISTENING = false;
 	
-	public ArrayList<String> wordList = new ArrayList<String>();
+	public ArrayList<String> wordList = new ArrayList<String>(); // Contains the English words from the word list. 
+	public ArrayList<String> wordList_ar = new ArrayList<String>(); // Contains the Arabic words from the word list. 
 	
 	private static final String APPLICATION_NAME = "QCRIGlass/1.0";
 
 	/** API Key for the registered developer project for your application. */
 	private static final String API_KEY = "AIzaSyA_4Wk5XsirNZq13yL6PQGq6c-wLQZf3-c";
-
-	/** Global instance of the JSON factory. */
-	//private static final JsonFactory JSON_FACTORY = JacksonFactory.getDefaultInstance();
-
-	/** Global instance of the HTTP transport. */
-	//private static HttpTransport httpTransport;
-
-	@SuppressWarnings("unused")
-	//private static Translate client;
-
 	
 	SpeechRecognizer sr;
 	TextView textView;
@@ -76,13 +87,33 @@ public class MainActivity extends Activity {
 	String results = "recording audio";
 	Intent intent;
 	BufferedReader reader;
-	String OutputFile = "results.txt";
+	String OutputFile = "results.txt"; // Text file where the data(results) gets stored. 
 	BufferedWriter writer;
-	String curWord;
-	String sourceLanguage = "en";
-	String targetLanguage = "ar";
+	String sourceLanguage = "en"; // en - English
+	String targetLanguage = "ar"; // ar - Arabic
 	
+	
+	//Variables being stored in database
+	public String translated_word = "'init'";
+	public String original_word = "'init'";
+	public String recognized_word = "'init'";
+	public String original_translation = "'init'";
+	public String recognition_correct = "0";
+	public String translation_correct = "0";
+	public String translation_time = "0";
+	public String recognition_time = "0";
+	
+	//This is the only thing you need to modify when testing with different users. Change the id
+	// and install the apk on the Glass again. Be careful about the format - "'<user_id>'", as
+	//it is required for the POST request to be accepted by the server.
+	public String USER_ID;
+	int USER_ID_FLAG = 0; 
+	/*This is used to get the name of the person, 
+	since it needs to be asked only at the beginning of the application, flag is being used.*/
 
+	/*
+	 * This function starts up the application functionality and starts the speech recognition engine. 
+	 */
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
@@ -92,11 +123,9 @@ public class MainActivity extends Activity {
 		//To prevent the screen from going to sleep
 		getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 		
-		readResults();
-		
 		// get text view inflated from the layout resource
 		textView = (TextView) findViewById(R.id.textView1);
-		textView.setText("Tap to begin");
+		textView.setText("Hello there! Tap to Start, say your name when prompted and then read every word.");
 
 		// create gesture detector
 		gestureDetector = createGestureDetector();
@@ -110,7 +139,10 @@ public class MainActivity extends Activity {
 			}
 		});
 	}
-
+	
+	/*
+	 * This function destroys the speech recognition system and closes the application functionality. 
+	 */
 	@Override
 	protected void onDestroy() {
 		Log.d(TAG, "closing application");
@@ -131,21 +163,6 @@ public class MainActivity extends Activity {
 		super.onDestroy();
 	}
 	
-	@Override
-	protected void onPause() {
-
-	    Log.i(TAG, "on pause called");
-	    if(sr!=null){
-	        //sr.stopListening();
-	        //sr.cancel();
-	        sr.destroy();              
-
-	    }
-	    sr = null;
-
-	    super.onPause();
-	}
-	
 
 	@Override
 	public boolean onCreateOptionsMenu(Menu menu) {
@@ -153,93 +170,25 @@ public class MainActivity extends Activity {
 		getMenuInflater().inflate(R.menu.main, menu);
 		return true;
 	}
-
-	@Override
-	public boolean onOptionsItemSelected(MenuItem item) {
-		switch (item.getItemId()) {
-		case R.id.menu_item_android:
-			//showMessageAndSpeak("Hello Android!");
-			return true;
-		case R.id.menu_item_glass:
-			//showMessageAndSpeak("Hello Glass!");
-			return true;
-		case R.id.menu_item_to_me:
-			//startListening();
-			return true;
-		case R.id.menu_item_camera:
-			//startActivityForResult(new Intent(MediaStore.ACTION_IMAGE_CAPTURE), 200);
-			break;
-		case R.id.menu_item_reset:
-			//showMessageAndSpeak("Hello world!");
-			//this.findViewById(R.id.backgroundLayout).setBackgroundDrawable(null);
-			return true;
-		case R.id.menu_item_about:
-			//startActivity(new Intent(this, InfoActivity.class));
-			return true;
-		}
-		return super.onOptionsItemSelected(item);
-	}
 	
-	public void writeToFile(String result){
-		Log.d(TAG, "Writing results to file " + result);
-         FileOutputStream fos = null;
-		try {
-			fos = openFileOutput(OutputFile,Context.MODE_APPEND);
-		} catch (FileNotFoundException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-         try {
-			fos.write(result.getBytes());
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-         try {
-			fos.flush();
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-         try {
-			fos.close();
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-	}
-	
-	public void readResults(){
-		Log.d(TAG, "Reading results");
-		int c;
-		String temp = "";
-		try {
-			FileInputStream fin = openFileInput(OutputFile);
-			while((c = fin.read()) != -1){
-				temp = temp + Character.toString((char) c);
-			}
-			fin.close();
-		} catch (FileNotFoundException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-		Log.d(TAG, temp);
-	}
-	
-	public void initiateReader(){
+	/*
+	 * Opens the file to be read.
+	 */
+	public void initiateReader(String fileName){
+		
 		try {
 			reader = new BufferedReader(
-			        new InputStreamReader(getAssets().open(InputFileName)));
+			        new InputStreamReader(getAssets().open(fileName), "UTF-8"));
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
 	}
-		
-	public void pullWords(){
+	
+	/*
+	 * Pulls the words from each line of the file. 
+	 */
+	public void pullWords(ArrayList<String> wordList){
 		String line;
 		try {
 			while((line = reader.readLine()) != null ){
@@ -253,13 +202,77 @@ public class MainActivity extends Activity {
 		
 	}
 	
+	/*
+	 * Displays each word on the glass.
+	 */
 	public void displayWord(){
 		Random randomGenerator = new Random();
 		int randInt = randomGenerator.nextInt(wordList.size());
-		curWord = wordList.get(randInt);
-		textView.setText(curWord);
+		original_word = wordList.get(randInt);
+		original_translation = wordList_ar.get(randInt);
+		textView.setText(original_word);
 	}
 	
+	/*
+	 * Function that stores the data obtained in an online SQL database.
+	 */
+	private class StoreToDatabase extends AsyncTask<String, String, String>{
+
+		protected void onPreExecute(){
+			super.onPreExecute();
+			Log.d(TAG, "Storing to database");
+		}
+		@Override
+		protected String doInBackground(String... strings) {
+			HttpClient client = new DefaultHttpClient();
+			HttpPost post = new HttpPost("http://10.5.1.229/glass/add_data.php");
+            
+			List<NameValuePair> params = new ArrayList<NameValuePair>();
+			Log.d(TAG, "Original word " + original_word);
+            params.add(new BasicNameValuePair("ORIGINAL_WORD", "'" + original_word + "'"));
+            Log.d(TAG, "Recognized word " + recognized_word);
+            params.add(new BasicNameValuePair("RECOGNIZED_WORD", "'" + recognized_word + "'"));
+            Log.d(TAG, "Original translation " + original_translation);
+            params.add(new BasicNameValuePair("ORIGINAL_TRANSLATION", "'" + original_translation + "'"));
+            Log.d(TAG, "Translated word " + translated_word);
+            params.add(new BasicNameValuePair("TRANSLATED_WORD", "'" + translated_word + "'" ));
+            params.add(new BasicNameValuePair("RECOGNITION_CORRECT", recognition_correct));
+            params.add(new BasicNameValuePair("TRANSLATION_CORRECT", translation_correct ));
+            params.add(new BasicNameValuePair("TRANSLATION_TIME", translation_time ));
+            params.add(new BasicNameValuePair("RECOGNITION_TIME", recognition_time ));
+            params.add(new BasicNameValuePair("user_id", USER_ID));
+			
+            try {
+				post.setEntity(new UrlEncodedFormEntity(params, "UTF-8"));
+				//Log.d(TAG, "Post " +  post.getParams().getParameter("ORIGINAL_TRANSLATION").toString());
+			} catch (UnsupportedEncodingException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+            try {
+				HttpResponse response = client.execute(post);
+				HttpEntity entity = response.getEntity();
+				
+				String responseString = EntityUtils.toString(entity, "UTF-8");
+				Log.d(TAG, " SQL INSERT " + responseString);
+			} catch (ClientProtocolException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+            return "Success";
+		}
+		
+		protected void onPostExecute(){
+			Log.d(TAG, "Stored data");
+		}
+	}
+	
+	/*
+	 * The function that translates the given word into Arabic using google translate API.
+	 */
 	private class WordTranslateTask extends AsyncTask<String, String, String>{
 	
 		@Override
@@ -296,15 +309,10 @@ public class MainActivity extends Activity {
 				e1.printStackTrace();
 			}
 			Log.d(TAG, result);
-			return result;
-	        
-		}
-		
-		protected void onPostExecute(String s){
-			Log.d(TAG, "Post execute");
+			
 			String translation = "";
 			try {
-				JSONObject jsonObj = new JSONObject(s);
+				JSONObject jsonObj = new JSONObject(result);
 				translation = jsonObj.getJSONObject("data").getJSONArray("translations").getJSONObject(0).getString("translatedText");
 			} catch (JSONException e) {
 				// TODO Auto-generated catch block
@@ -312,50 +320,38 @@ public class MainActivity extends Activity {
 			}
 			
 			Log.d(TAG, "Translation " + translation);
-			this.publishProgress(translation);
+			
+			return translation; 
+		}
+		
+		protected void onPostExecute(String s){
+			this.publishProgress(s);
 			return;
 		}
 		
 		protected String onProgress(String s){
 			Log.d(TAG, "Onprogress");
-			return s;
-			
+			return s;			
 		}
-		
-		
-	}
-	/*
-	public String translateTest(String text){
-		try {
-		      // initialize the transport
-		      //httpTransport = GoogleNetHttpTransport.newTrustedTransport();
-
-		      // set up global Translate instance
-		      //client = new Translate.Builder(httpTransport, JSON_FACTORY, null)
-		         // .setGoogleClientRequestInitializer(new TranslateRequestInitializer(API_KEY))
-		         // .setApplicationName(APPLICATION_NAME).build();
-
-			
-		      client.execute(text, Language, Language.ARABIC);
-		      Log.d(TAG, "Success! Now add code here.");
-
-		    } catch (Throwable t) {
-		      t.printStackTrace();
-		    }
-		return text;
 
 	}
-	*/
 	
-
+	/*
+	 * Acts as the main function that calls out to other functions as required such as to display a new word 
+	 * or to make the speech recognition start listening.
+	 */
 	@Override
 	public boolean onKeyDown(int keyCode, KeyEvent event) {
 		switch (keyCode) {
 		case KeyEvent.KEYCODE_DPAD_CENTER:
 			Log.d(TAG, "Tapped (DPAD_CENTER)");
-			initiateReader();
-			pullWords();
-			displayWord();
+			initiateReader(InputFileName);
+			pullWords(wordList);
+			initiateReader(InputFileName_ar);
+			pullWords(wordList_ar);
+			if(USER_ID_FLAG==1){
+				displayWord();
+			}
 			if(!STARTED_LISTENING){
 				startListening();
 				STARTED_LISTENING = true;
@@ -366,29 +362,10 @@ public class MainActivity extends Activity {
 		}
 		return super.onKeyDown(keyCode, event);
 	}
-
-	@Override
-	public boolean onGenericMotionEvent(MotionEvent event) {
-		switch (event.getAction()) {
-		case MotionEvent.ACTION_DOWN:
-			//Log.d(TAG, String.format("Motion ACTION_DOWN: %.1f / %.1f", event.getX(), event.getY()));
-			// return true if you handled this event
-			break;
-		case MotionEvent.ACTION_MOVE:
-			//Log.d(TAG, String.format("Motion ACTION_MOVE: %.1f / %.1f", event.getX(), event.getY()));
-			// return true if you handled this event
-			break;
-		case MotionEvent.ACTION_UP:
-			//Log.d(TAG, String.format("Motion ACTION_UP: %.1f / %.1f", event.getX(), event.getY()));
-			// return true if you handled this event
-			break;
-		}
-
-		if(gestureDetector.onMotionEvent(event))
-			return true;
-
-		return super.onGenericMotionEvent(event);
-	}
+	
+	/*
+	 *  Function that deals with gestures used by the user. 
+	 */
 
 	private GestureDetector createGestureDetector() {
 		GestureDetector gestureDetector = new GestureDetector(this);
@@ -432,53 +409,98 @@ public class MainActivity extends Activity {
 	private void makeToast(String x){
 		Toast.makeText(this, x,Toast.LENGTH_SHORT ).show();
 	}
-
+	/*
+	 * Function that deals with voice recognition.
+	 * It checks if the received word is the same word as the one given and also gets the name of the user.  
+	 */
 	@SuppressWarnings("static-access")
 	private void startListening() {
-		//Log.d(TAG, "Entered startListening");
-		// open system voice recognizer
-		//Log.d(TAG, "Printing results");
+		if(USER_ID_FLAG == 0){
+			textView = (TextView) findViewById(R.id.textView1);
+			textView.setText("Please say your name!");
+    	}
+		final long startTime = System.currentTimeMillis();
 		sr = SpeechRecognizer.createSpeechRecognizer(this.getApplicationContext());
 		sr.setRecognitionListener(new RecognitionListener(){
 			@Override
-		    public void onResults(Bundle b) { 
+		    public void onResults(Bundle b) {
+				final long resultsTime = System.currentTimeMillis();
+				recognition_time = Long.toString(resultsTime - startTime);
 		    	ArrayList<String> recognized = b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
-		    	Log.d(TAG, "Results" + recognized.toString());
-		    	results = "";
-		    	curWord = curWord.toLowerCase();
-		    	String isCorrect = "false";
-		    	for(int i = 0; i< recognized.size(); i++){
-		    		
-		    		String tempword = recognized.get(i);
-		    		if(i==0){
-		    			
-		    			AsyncTask task = new WordTranslateTask().execute(tempword);
-		    			try {
-							String translation = (String) task.get();
-						} catch (InterruptedException e) {
-							// TODO Auto-generated catch block
-							e.printStackTrace();
-						} catch (ExecutionException e) {
-							// TODO Auto-generated catch block
-							e.printStackTrace();
-						}
-						
-		    			//translateTest(tempword);
+		    	if(USER_ID_FLAG == 0){
+		    		for(int i = 0; i< recognized.size(); i++){
+			    		String tempword = recognized.get(i);
+			    		recognized_word = tempword;
+			    		USER_ID = USER_ID + " " + tempword;
 		    		}
-		    		tempword = tempword.toLowerCase();
-		    		if(curWord.equals(tempword)){
-		    			isCorrect = "true";
-		    		}
-		    		results = results + tempword + " ";
+		    		USER_ID = "'"+ USER_ID +"'"; 
+		    		USER_ID_FLAG = 1;
 		    	}
-		    	writeToFile(curWord + " " + results + isCorrect + "\n" );
+		    	else {
+			    	Log.d(TAG, "Results" + recognized.toString());
+			    	results = "";
+			    	original_word = original_word.toLowerCase();
+			    	for(int i = 0; i< recognized.size(); i++){
+			    		String tempword = recognized.get(i);
+			    		recognized_word = tempword;
+			    		if(i==0){
+			    			tempword = tempword.toLowerCase();
+				    		if(original_word.equals(tempword)){
+				    			recognition_correct = "1";
+				    		}
+				    		else{
+				    			recognition_correct = "0";
+				    		}
+			    			String translation = "";
+			    			final long startTimeTranslation = System.currentTimeMillis();
+			    			AsyncTask task = new WordTranslateTask().execute(original_word);
+			    			try {
+			    				translation = (String) task.get();
+			    				translated_word = translation;
+			    				final long endTimeTranslation = System.currentTimeMillis();
+			    				translation_time = Long.toString(endTimeTranslation - startTimeTranslation);
+			    				Log.d(TAG, "Original translation " + original_translation);
+			    				Log.d(TAG, "Translated word " + translated_word);
+			    				if(translated_word.equals(original_translation)){
+			    					translation_correct = "1";
+			    				}
+			    				else{
+			    					translation_correct = "0";
+			    				}
+							} catch (InterruptedException e) {
+								// TODO Auto-generated catch block
+								e.printStackTrace();
+							} catch (ExecutionException e) {
+								// TODO Auto-generated catch block
+								e.printStackTrace();
+							}
+			    			Log.d(TAG, "asdsa " + translation);
+			    			AsyncTask storeTask = new StoreToDatabase().execute();
+			    			
+			    			try {
+								String result= (String) storeTask.get();
+								Log.d(TAG, result);
+							} catch (InterruptedException e) {
+								// TODO Auto-generated catch block
+								e.printStackTrace();
+							} catch (ExecutionException e) {
+								// TODO Auto-generated catch block
+								e.printStackTrace();
+							}
+			    			
+			    		}
+			    		
+			    		results = results + tempword + " ";
+			    	}
+		    	}
+		    	
+		    	//Get confidence scores
 		    	float[] scores = b.getFloatArray(SpeechRecognizer.CONFIDENCE_SCORES);
 		    	if(scores!=null){
 		    		Log.d(TAG, "Scores " + scores[0]);
 		    	}
-		    	//sr.destroy();
-		    	displayWord();
 		    	sr.destroy();
+		    	displayWord();
 		    	startListening();
 		    }
 
@@ -504,13 +526,13 @@ public class MainActivity extends Activity {
 
 			@Override
 			public void onEndOfSpeech() {
+				final long endOfSpeechTime = System.currentTimeMillis();
 				Log.d(TAG, "Speech ended");
-				//sr.stopListening();
-				//sr.cancel();
-				//sr.destroy();
-				//startListening();
 			}
 
+			/*
+			 * Function that deals with any runtime error. 
+			 */
 			@Override
 			public void onError(int error) {
 				Log.d(TAG, "error " + error);
@@ -527,7 +549,6 @@ public class MainActivity extends Activity {
 		            break;
 		        case SpeechRecognizer.ERROR_SERVER: 
 		            Log.d(TAG, "Server error"); 
-		            //startListening();
 		            break;
 		        case SpeechRecognizer.ERROR_CLIENT: 
 		            Log.d(TAG,"Client error"); 
@@ -537,7 +558,6 @@ public class MainActivity extends Activity {
 		            break;
 		        case SpeechRecognizer.ERROR_NO_MATCH: 
 		            Log.d(TAG, " no match") ; 
-		            //startListening();
 		            break;
 		        case SpeechRecognizer.ERROR_RECOGNIZER_BUSY: 
 		            Log.d(TAG, " recogniser busy") ; 
@@ -553,7 +573,11 @@ public class MainActivity extends Activity {
 
 		        }
 			}
-
+			
+			/*
+			 * ...
+			 */
+			
 			@Override
 			public void onPartialResults(Bundle partialResults) {
 				ArrayList<String> recognized = partialResults.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
@@ -570,11 +594,9 @@ public class MainActivity extends Activity {
 		
 		intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
 		intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-		//intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS,true);
 		intent.putExtra(RecognizerIntent.EXTRA_CONFIDENCE_SCORES, true);
 		intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, pref_language);
-		//intent.putExtra(RecognizerIntent.EXTRA_RESULTS, true);
-		intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS,2);
+		intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS,5);
 		
 		//intent.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE,"voice.recognition.test");
 		
@@ -599,34 +621,14 @@ public class MainActivity extends Activity {
 		this.startActivityForResult(intent, 100);
 		}
 	}
-
-	@Override
-	protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-		Log.d(TAG, "Entered onActivityResult");
-		if (requestCode == 100) {
-			if(resultCode == Activity.RESULT_OK) {
-				// get results from the voice recognizer
-				List<String> results = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
-				//showMessageAndSpeak( results.get(0));
-				Toast.makeText(this, "Gotcha. Speak again!", Toast.LENGTH_SHORT).show();
-				Log.d(TAG, "Successfully got activity result " + results.toString() );
-			} else {
-				Toast.makeText(this, "Cannot get your name!", Toast.LENGTH_SHORT).show();
-				
-				// play a system sound
-				AudioManager audio = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
-				audio.playSoundEffect(Sounds.ERROR);
-				
-				Log.wtf(TAG, "Activity might got canceled?");
-			}
-		super.onActivityResult(requestCode, resultCode, data);
-		}
-	}
 	
+	/*
+	 * Function displays text on the screen and then reads it out loud.
+	 */
 	private void showMessageAndSpeak(String message) {
 		textView.setText(message);
 		startListening();
-		//tts.speak(message, TextToSpeech.QUEUE_FLUSH, null);
+		tts.speak(message, TextToSpeech.QUEUE_FLUSH, null);
 	}
 	
 }
