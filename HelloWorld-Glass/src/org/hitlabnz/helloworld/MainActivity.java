@@ -2,20 +2,21 @@ package org.hitlabnz.helloworld;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.FileReader;
+//import java.io.File;
+//import java.io.FileInputStream;
+//import java.io.FileNotFoundException;
+//import java.io.FileOutputStream;
+//import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.UnsupportedEncodingException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLConnection;
+import java.net.URLEncoder;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
-import java.util.Random;
 import java.util.concurrent.ExecutionException;
 
 import org.apache.http.HttpEntity;
@@ -23,19 +24,23 @@ import org.apache.http.HttpResponse;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.HttpClient;
+import org.apache.http.client.ResponseHandler;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
+import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
+import org.apache.http.impl.client.BasicResponseHandler;
 import org.apache.http.impl.client.DefaultHttpClient;
 import org.apache.http.message.BasicNameValuePair;
 import org.apache.http.util.EntityUtils;
 import org.json.JSONException;
 import org.json.JSONObject;
-import org.json.JSONStringer;
+//import org.json.JSONStringer;
 
 import android.app.Activity;
-import android.content.Context;
 import android.content.Intent;
 import android.media.AudioManager;
+import android.media.MediaPlayer;
+import android.media.MediaPlayer.OnCompletionListener;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.speech.RecognitionListener;
@@ -45,16 +50,16 @@ import android.speech.tts.TextToSpeech;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.Menu;
-import android.view.MenuItem;
-import android.view.MotionEvent;
+//import android.view.MenuItem;
+//import android.view.MotionEvent;
 import android.view.WindowManager;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import com.google.android.glass.media.Sounds;
+//import com.google.android.glass.media.Sounds;
 import com.google.android.glass.touchpad.Gesture;
 import com.google.android.glass.touchpad.GestureDetector;
-import com.google.android.gms.internal.br;
+//import com.google.android.gms.internal.br;
 
 public class MainActivity extends Activity {
 
@@ -73,7 +78,7 @@ public class MainActivity extends Activity {
 	public boolean STARTED_LISTENING = false;
 	
 	public ArrayList<String> wordList = new ArrayList<String>(); // Contains the English words from the word list. 
-	public ArrayList<String> wordList_ar = new ArrayList<String>(); // Contains the Arabic words from the word list. 
+	public ArrayList<String> wordList_ar = new ArrayList<String>(); // Contains the Arabic words from the word list.
 	
 	private static final String APPLICATION_NAME = "QCRIGlass/1.0";
 
@@ -84,6 +89,7 @@ public class MainActivity extends Activity {
 	TextView textView;
 	GestureDetector gestureDetector;
 	TextToSpeech tts;
+	MediaPlayer mediaPlayer;
 	String results = "recording audio";
 	Intent intent;
 	BufferedReader reader;
@@ -91,7 +97,6 @@ public class MainActivity extends Activity {
 	BufferedWriter writer;
 	String sourceLanguage = "en"; // en - English
 	String targetLanguage = "ar"; // ar - Arabic
-	
 	
 	//Variables being stored in database
 	public String translated_word = "'init'";
@@ -102,12 +107,16 @@ public class MainActivity extends Activity {
 	public String translation_correct = "0";
 	public String translation_time = "0";
 	public String recognition_time = "0";
+	public String audioFile = "";
 	
 	//This is the only thing you need to modify when testing with different users. Change the id
 	// and install the apk on the Glass again. Be careful about the format - "'<user_id>'", as
 	//it is required for the POST request to be accepted by the server.
 	public String USER_ID;
 	int USER_ID_FLAG = 0; 
+	int wordPos = 0;
+	List<Integer> ordering = new ArrayList<Integer>();
+	boolean mPlayerCreated = false;
 	/*This is used to get the name of the person, 
 	since it needs to be asked only at the beginning of the application, flag is being used.*/
 
@@ -138,6 +147,41 @@ public class MainActivity extends Activity {
 					Toast.makeText(getApplicationContext(), "TTS not working.", Toast.LENGTH_SHORT).show();
 			}
 		});
+		
+		mediaPlayer = new MediaPlayer();
+		mediaPlayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
+		mediaPlayer.setOnCompletionListener(new OnCompletionListener() {           
+			public void onCompletion(MediaPlayer mp) {
+				Log.d(TAG,"audio Complete");
+				mp.stop();
+				mp.reset();
+				if(audioFile != "")
+				{
+					String filename = "http://192.168.1.107/glass/"+audioFile;
+					Log.d(TAG,"next audio:"+filename);
+					try {
+						mp.setDataSource(filename);
+						mp.prepare();
+						mp.start();
+						audioFile = "";
+					} catch (IllegalArgumentException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					} catch (SecurityException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					} catch (IllegalStateException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+				}
+				else
+					mPlayerCreated = false;
+		    }
+		});
 	}
 	
 	/*
@@ -159,6 +203,9 @@ public class MainActivity extends Activity {
 			Log.d(TAG, "Destroyed sr");
 		}
 		sr = null;
+		
+		mediaPlayer.release();
+		mediaPlayer = null;
 		
 		super.onDestroy();
 	}
@@ -193,24 +240,146 @@ public class MainActivity extends Activity {
 		try {
 			while((line = reader.readLine()) != null ){
 				wordList.add(line);
-				Log.d(TAG, line);
+				//Log.d(TAG, line);
 			}
 		} catch (IOException e1) {
 			// TODO Auto-generated catch block
 			e1.printStackTrace();
 		}
-		
+	}
+	
+	/* randomize the list of words to be picked */
+	public void randomOrder()
+	{
+		for (int i =0 ; i < wordList.size(); i++)
+			ordering.add(i);
+		Collections.shuffle(ordering);
 	}
 	
 	/*
 	 * Displays each word on the glass.
 	 */
 	public void displayWord(){
-		Random randomGenerator = new Random();
-		int randInt = randomGenerator.nextInt(wordList.size());
-		original_word = wordList.get(randInt);
-		original_translation = wordList_ar.get(randInt);
+		//Random randomGenerator = new Random();
+		//int randInt = randomGenerator.nextInt(wordList.size());
+		if(wordPos == wordList.size())
+		{
+			Collections.shuffle(ordering);
+			wordPos = 0;
+		}
+		int pos = ordering.get(wordPos);
+		original_word = wordList.get(pos);
+		original_translation = wordList_ar.get(pos);
 		textView.setText(original_word);
+		wordPos++;
+		AsyncTask getTTS = new GetTTS().execute();
+		
+		try {
+			String result= (String) getTTS.get();
+			Log.d(TAG, wordPos + " " + result);
+		} catch (InterruptedException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (ExecutionException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		
+		playAudio();
+		
+			/*AsyncTask textToAudio = new TextToAudio().execute();
+
+			try {
+				String result= (String) textToAudio.get();
+				Log.d(TAG, result);
+				audioFile = "";
+			} catch (InterruptedException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			} catch (ExecutionException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}*/
+	}
+	
+	public void playAudio()
+	{
+		if(!mPlayerCreated && audioFile != "")
+		{
+
+			String filename = "http://192.168.1.107/glass/"+audioFile;//mysound.mp3";
+			Log.d(TAG, filename);
+			try {
+				mediaPlayer.setDataSource(filename);
+				mediaPlayer.prepare();
+				mediaPlayer.start();
+				mPlayerCreated = true;
+				audioFile = "";
+			} catch (IllegalArgumentException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			} catch (IllegalStateException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			} catch (Exception e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		}
+	}
+	
+	private class GetTTS extends AsyncTask<String, String, String>{
+
+		protected void onPreExecute(){
+			super.onPreExecute();
+		}
+		@Override
+		protected String doInBackground(String... strings) {
+
+			HttpClient client = new DefaultHttpClient();
+			String query = "";
+			try {
+				query = URLEncoder.encode(original_word, "UTF-8");
+			} catch (UnsupportedEncodingException e1) {
+				// TODO Auto-generated catch block
+				e1.printStackTrace();
+			}
+			HttpGet get = new HttpGet("http://192.168.1.107/glass/get_tts.php?ORIGINAL_WORD="+query);
+			String responseString = "";
+			/*List<NameValuePair> params = new ArrayList<NameValuePair>();      
+		params.add(new BasicNameValuePair("ORIGINAL_WORD",original_word));
+		try {
+			post.setEntity(new UrlEncodedFormEntity(params));
+		} catch (UnsupportedEncodingException e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
+		}*/
+			try {
+				ResponseHandler<String> responseHandler = new BasicResponseHandler();
+				//HttpResponse response = 
+				responseString = client.execute(get,responseHandler);
+				//HttpEntity entity = response.getEntity();
+
+				//String responseString = EntityUtils.toString(entity, "UTF-8");
+				//Log.d(TAG, responseString);
+
+				if(responseString.contains(".mp3"))
+					audioFile = responseString;
+
+			} catch (ClientProtocolException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+			
+			return responseString;
+		}
+		
 	}
 	
 	/*
@@ -225,7 +394,7 @@ public class MainActivity extends Activity {
 		@Override
 		protected String doInBackground(String... strings) {
 			HttpClient client = new DefaultHttpClient();
-			HttpPost post = new HttpPost("http://10.5.1.229/glass/add_data.php");
+			HttpPost post = new HttpPost("http://192.168.1.107/glass/add_data.php");//192.168.1.107
             
 			List<NameValuePair> params = new ArrayList<NameValuePair>();
 			Log.d(TAG, "Original word " + original_word);
@@ -255,6 +424,13 @@ public class MainActivity extends Activity {
 				
 				String responseString = EntityUtils.toString(entity, "UTF-8");
 				Log.d(TAG, " SQL INSERT " + responseString);
+				
+				if(responseString.contains(".mp3"))
+					audioFile = responseString;
+				
+				playAudio();
+				
+				
 			} catch (ClientProtocolException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
@@ -262,7 +438,7 @@ public class MainActivity extends Activity {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
-            return "Success";
+            return "Success " + audioFile;
 		}
 		
 		protected void onPostExecute(){
@@ -274,15 +450,17 @@ public class MainActivity extends Activity {
 	 * The function that translates the given word into Arabic using google translate API.
 	 */
 	private class WordTranslateTask extends AsyncTask<String, String, String>{
-	
+		
 		@Override
 		protected String doInBackground(String...strings ) {
 			Log.d(TAG, "Translate word");
 			String inputLine = "";
 			String result = "";
 			URL url;
+			String query;
 			try {
-				url = new URL("https://www.googleapis.com/language/translate/v2?key=" + API_KEY + "&source=" + sourceLanguage + "&target=" + targetLanguage + "&q=" + strings[0]);
+				query = URLEncoder.encode(strings[0], "UTF-8");
+				url = new URL("https://www.googleapis.com/language/translate/v2?key=" + API_KEY + "&source=" + sourceLanguage + "&target=" + targetLanguage + "&q=" + query);
 				//url = new URL("https://www.googleapis.com/language/translate/v2?key=AIzaSyA_4Wk5XsirNZq13yL6PQGq6c-wLQZf3-c&source=en&target=ar&q=Hello%20world");
 				URLConnection yc = url.openConnection();
 		        BufferedReader in = new BufferedReader(
@@ -336,6 +514,78 @@ public class MainActivity extends Activity {
 
 	}
 	
+	private class TextToAudio extends AsyncTask<String, String, String>{
+		
+		@Override
+		protected String doInBackground(String...strings ) {
+			//Log.d(TAG, "convert to audio");
+			//URL url;
+			//String mFileName = recognized_word+".mp3";//Environment.getExternalStorageDirectory().getAbsolutePath();
+			//Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC); 
+			//mFileName = mFileName+"/"+original_word+".mp3";
+	        
+			
+			/*try{
+				//String word="〜のそばに";
+	    		String word=java.net.URLEncoder.encode(translated_word, "UTF-8");
+	    		Log.d(TAG, word);
+				url = new URL("http://translate.google.com/translate_tts?ie=UTF-8&tl=ar&q="+word);
+				URLConnection urlConn = (URLConnection) url.openConnection();
+				//urlConn.addRequestProperty("User-Agent", "Mozilla/4.76");
+				InputStream audioSrc = urlConn.getInputStream();
+				
+				DataInputStream read = new DataInputStream(audioSrc);
+				OutputStream outstream = new FileOutputStream(new File(mFileName));
+				byte[] buffer = new byte[1024];
+				int len;
+				while ((len = read.read(buffer)) > 0) {
+					outstream.write(buffer, 0, len);                    
+				}
+				outstream.close();     
+				
+			}catch(IOException e){
+				System.out.println(e.getMessage());
+			}
+			*/
+			//mediaPlayer = MediaPlayer.create(getApplicationContext(), R.raw.mysound);
+			//mediaPlayer.start();
+			if(audioFile != "")
+			{
+				String filename = "http://192.168.1.107/glass/"+audioFile;//mysound.mp3";f
+				try {
+					mediaPlayer.setDataSource(filename);
+					mediaPlayer.prepare();
+					mediaPlayer.start();
+					mPlayerCreated = true;
+				} catch (IllegalArgumentException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				} catch (IllegalStateException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				} catch (Exception e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+
+				return "success " + audioFile; 
+			}
+			else
+				return "fail";
+		}
+		
+		protected void onPostExecute(String s){
+			Log.d(TAG, "played audio");
+			//mediaPlayer.stop();
+			//mediaPlayer.release();
+			//mediaPlayer = null;
+		}
+
+	}
+	
 	/*
 	 * Acts as the main function that calls out to other functions as required such as to display a new word 
 	 * or to make the speech recognition start listening.
@@ -349,6 +599,7 @@ public class MainActivity extends Activity {
 			pullWords(wordList);
 			initiateReader(InputFileName_ar);
 			pullWords(wordList_ar);
+			randomOrder();
 			if(USER_ID_FLAG==1){
 				displayWord();
 			}
@@ -417,7 +668,7 @@ public class MainActivity extends Activity {
 	private void startListening() {
 		if(USER_ID_FLAG == 0){
 			textView = (TextView) findViewById(R.id.textView1);
-			textView.setText("Please say your name!");
+			textView.setText("Please say your full name!");
     	}
 		final long startTime = System.currentTimeMillis();
 		sr = SpeechRecognizer.createSpeechRecognizer(this.getApplicationContext());
@@ -435,6 +686,7 @@ public class MainActivity extends Activity {
 		    		}
 		    		USER_ID = "'"+ USER_ID +"'"; 
 		    		USER_ID_FLAG = 1;
+
 		    	}
 		    	else {
 			    	Log.d(TAG, "Results" + recognized.toString());
@@ -458,6 +710,7 @@ public class MainActivity extends Activity {
 			    				translation = (String) task.get();
 			    				translated_word = translation;
 			    				final long endTimeTranslation = System.currentTimeMillis();
+			    				//textView.setText(translated_word);
 			    				translation_time = Long.toString(endTimeTranslation - startTimeTranslation);
 			    				Log.d(TAG, "Original translation " + original_translation);
 			    				Log.d(TAG, "Translated word " + translated_word);
@@ -474,7 +727,7 @@ public class MainActivity extends Activity {
 								// TODO Auto-generated catch block
 								e.printStackTrace();
 							}
-			    			Log.d(TAG, "asdsa " + translation);
+			    			Log.d(TAG, "translation " + translation);
 			    			AsyncTask storeTask = new StoreToDatabase().execute();
 			    			
 			    			try {
@@ -488,10 +741,73 @@ public class MainActivity extends Activity {
 								e.printStackTrace();
 							}
 			    			
+			    			/*AsyncTask textToAudio = new TextToAudio().execute();
+			    			
+			    			try {
+								String result= (String) textToAudio.get();
+								Log.d(TAG, result);
+								TimeUnit.SECONDS.sleep(1);
+							} catch (InterruptedException e) {
+								// TODO Auto-generated catch block
+								e.printStackTrace();
+							} catch (ExecutionException e) {
+								// TODO Auto-generated catch block
+								e.printStackTrace();
+							}*/
+			    			
 			    		}
 			    		
 			    		results = results + tempword + " ";
 			    	}
+			    	
+			    	//mediaPlayer = MediaPlayer.create(getApplicationContext(), R.raw.bell);
+					//mediaPlayer.start();
+					//mediaPlayer.stop();
+					//mediaPlayer.release();
+					//mediaPlayer = null;
+			    	
+			    	/*HttpClient client = new DefaultHttpClient();
+			        HttpGet getRequest = new HttpGet();
+
+			        try {
+			            // construct a URI object
+			            getRequest.setURI(new URI("http://translate.google.com/translate_tts?ie=UTF-8&tl=ar&q="+translated_word));
+			        } catch (URISyntaxException e) {
+			            Log.e("URISyntaxException", e.toString());
+			        }
+
+			        // buffer reader to read the response
+			        InputStream in = null;
+			        // the service response
+			        HttpResponse response = null;
+			        try {
+			            // execute the request
+			            response = client.execute(getRequest);
+			        } catch (ClientProtocolException e) {
+			            Log.e("ClientProtocolException", e.toString());
+			        } catch (IOException e) {
+			            Log.e("IO exception", e.toString());
+			        }
+			        try {
+			        	if(response.getEntity() != null)  
+			        	{
+			        		in = response.getEntity().getContent();
+			        		FileOutputStream fos = new FileOutputStream(new File("/home/meghna/GlassDev/audio.mp3"));
+
+			        		byte[] buffer = new byte[4096];
+			        		int length; 
+			        		while((length = in.read(buffer)) > 0) {
+			        			fos.write(buffer, 0, length);
+			        		}
+
+			        		fos.close();
+			        		in.close();
+			        	}
+			        } catch (IllegalStateException e) {
+			            Log.e("IllegalStateException", e.toString());
+			        } catch (IOException e) {
+			            Log.e("IO exception", e.toString());
+			        }*/
 		    	}
 		    	
 		    	//Get confidence scores
@@ -499,9 +815,11 @@ public class MainActivity extends Activity {
 		    	if(scores!=null){
 		    		Log.d(TAG, "Scores " + scores[0]);
 		    	}
-		    	sr.destroy();
+		    	
+		    	sr.destroy();	
 		    	displayWord();
 		    	startListening();
+		    	
 		    }
 
 			@Override

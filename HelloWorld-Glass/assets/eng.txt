@@ -33,7 +33,7 @@ Zoom
 Delete
 Login
 Logout
-Sign-up
+Sign up
 Lock
 Menu
 Timeline

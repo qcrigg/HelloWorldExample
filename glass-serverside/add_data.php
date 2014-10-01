@@ -30,6 +30,8 @@ $TRANSLATION_TIME = $_POST['TRANSLATION_TIME'];
 
 $table_name = "data_en";
 
+$filename = "ar/".preg_replace("['| |\"]", "",$RECOGNIZED_WORD).".mp3";
+
 $qr = "INSERT INTO $table_name (user_id, ORIGINAL_WORD, TRANSLATED_WORD, ORIGINAL_TRANSLATION,  RECOGNIZED_WORD, RECOGNITION_CORRECT, TRANSLATION_CORRECT, RECOGNITION_TIME, TRANSLATION_TIME) VALUES ($user_id, $ORIGINAL_WORD, $TRANSLATED_WORD, $ORIGINAL_TRANSLATION, $RECOGNIZED_WORD, $RECOGNITION_CORRECT, $TRANSLATION_CORRECT, $RECOGNITION_TIME, $TRANSLATION_TIME)";
 
 
@@ -37,7 +39,16 @@ $qr = "INSERT INTO $table_name (user_id, ORIGINAL_WORD, TRANSLATED_WORD, ORIGINA
 // Append location so with history
 $res = mysqli_query($con,$qr);
 
-echo "Query Res: $res\n";
+$query = urlencode(trim($TRANSLATED_WORD,"'"));
+
+if ($soundfile = file_get_contents("http://translate.google.com/translate_tts?ie=UTF-8&tl=ar&q=".$query))
+{
+	file_put_contents($filename,$soundfile);
+	
+	echo $filename;
+}
+else
+ echo "Query $res\n";
 
 //echo "Query: " $qr "\n";
 
