@@ -107,7 +107,7 @@ public class MainActivity extends Activity {
 	int USER_ID_FLAG = 0; 
 	int wordPos = 0;
 	List<Integer> ordering = new ArrayList<Integer>();
-	boolean mPlayerCreated = false;
+	//boolean mPlayerCreated = false;
 	boolean translatedAudio = false;
 	/*This is used to get the name of the person, 
 	since it needs to be asked only at the beginning of the application, flag is being used.*/
@@ -139,41 +139,6 @@ public class MainActivity extends Activity {
 					Toast.makeText(getApplicationContext(), "TTS not working.", Toast.LENGTH_SHORT).show();
 			}
 		});
-		
-		mediaPlayer = new MediaPlayer();
-		mediaPlayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
-		mediaPlayer.setOnCompletionListener(new OnCompletionListener() {           
-			public void onCompletion(MediaPlayer mp) {
-				//Log.d(TAG,"audio Complete");
-				mp.stop();
-				mp.reset();
-				if(audioFile != "")
-				{
-					String filename = "http://192.168.1.107/glass/"+audioFile;
-					//Log.d(TAG,"next audio:"+filename);
-					try {
-						mp.setDataSource(filename);
-						mp.prepare();
-						mp.start();
-						audioFile = "";
-					} catch (IllegalArgumentException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					} catch (SecurityException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					} catch (IllegalStateException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					} catch (IOException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
-				}
-				else
-					mPlayerCreated = false;
-		    }
-		});
 	}
 	
 	/*
@@ -196,9 +161,11 @@ public class MainActivity extends Activity {
 		}
 		sr = null;
 		
-		mediaPlayer.release();
-		mediaPlayer = null;
-		
+		if(mediaPlayer != null)
+		{
+			mediaPlayer.release();
+			mediaPlayer = null;
+		}
 		super.onDestroy();
 	}
 	
@@ -254,7 +221,10 @@ public class MainActivity extends Activity {
 	public void displayWord(){
 		//Random randomGenerator = new Random();
 		//int randInt = randomGenerator.nextInt(wordList.size());
-		if(wordPos == wordList.size())
+		//Log.d(TAG,"new word? " + translatedAudio + " " + mediaPlayer.isPlaying());
+		if(!translatedAudio && (mediaPlayer == null || !mediaPlayer.isPlaying()))
+		{
+			if(wordPos == wordList.size())
 			{
 				Collections.shuffle(ordering);
 				wordPos = 0;
@@ -263,9 +233,9 @@ public class MainActivity extends Activity {
 			original_word = wordList.get(pos);
 			original_translation = wordList_ar.get(pos);
 
-			AsyncTask getTTS = new GetTTS().execute();
+			/*AsyncTask getTTS = new GetTTS().execute();
 
-			try {
+		try {
 			String result= (String) getTTS.get();
 		} catch (InterruptedException e) {
 			// TODO Auto-generated catch block
@@ -275,56 +245,79 @@ public class MainActivity extends Activity {
 			e.printStackTrace();
 		}
 
-			playAudio();
+		playAudio();*/
 
-			try {
+			/*try {
 				if(translatedAudio)
 				{
-					TimeUnit.SECONDS.sleep(1);
-					translatedAudio = false;
+					TimeUnit.SECONDS.sleep(2);
+					//translatedAudio = false;
 				}
 			} catch (InterruptedException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
-			}
+			}*/
 
 			textView.setText(original_word);
+			tts.speak(original_word, TextToSpeech.QUEUE_FLUSH, null);
 			Log.d(TAG,"display " + original_word);
 			wordPos++;
-		
+		}
+		else
+		{
+			try {
+				TimeUnit.SECONDS.sleep(1);
+				if(mediaPlayer.isPlaying())
+					translatedAudio = false;
+			} catch (InterruptedException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+			displayWord();
+		}
+
 	}
 	
 	public void playAudio()
 	{
-		if(!mPlayerCreated && audioFile != "")
-		{
 
-			String filename = "http://192.168.1.107/glass/"+audioFile;
-			//Log.d(TAG, filename);
-			try {
-				mediaPlayer.setDataSource(filename);
-				mediaPlayer.prepare();
-				mediaPlayer.start();
-				mPlayerCreated = true;
-				audioFile = "";
-				//textView.setText(original_word);
-			} catch (IllegalArgumentException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			} catch (IllegalStateException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			} catch (Exception e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
+		mediaPlayer = new MediaPlayer();
+		mediaPlayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
+		mediaPlayer.setOnCompletionListener(new OnCompletionListener() {           
+			public void onCompletion(MediaPlayer mp) {
+				//Log.d(TAG,"audio Complete");
+				mp.stop();
+				mp.reset();
+				mp.release();
+				translatedAudio = false;
 			}
+		});
+
+		String filename = "http://192.168.1.107/glass/"+audioFile;
+		//Log.d(TAG, filename);
+		try {
+			mediaPlayer.setDataSource(filename);
+			mediaPlayer.prepare();
+			mediaPlayer.start();
+			//mPlayerCreated = true;
+			audioFile = "";
+			//textView.setText(original_word);
+		} catch (IllegalArgumentException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (IllegalStateException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
 		}
 	}
 	
-	private class GetTTS extends AsyncTask<String, String, String>{
+/*	private class GetTTS extends AsyncTask<String, String, String>{
 
 		protected void onPreExecute(){
 			super.onPreExecute();
@@ -360,7 +353,7 @@ public class MainActivity extends Activity {
 			return responseString;
 		}
 		
-	}
+	}*/
 	
 	/*
 	 * Function that stores the data obtained in an online SQL database.
@@ -408,7 +401,6 @@ public class MainActivity extends Activity {
 				if(responseString.contains(".mp3"))
 					audioFile = responseString;
 				
-				translatedAudio = true;
 				playAudio();
 				
 				
@@ -420,10 +412,6 @@ public class MainActivity extends Activity {
 				e.printStackTrace();
 			}
             return "stored to db";
-		}
-		
-		protected void onPostExecute(){
-			Log.d(TAG, "Stored data");
 		}
 	}
 	
@@ -486,52 +474,6 @@ public class MainActivity extends Activity {
 		protected void onPostExecute(String s){
 			this.publishProgress(s);
 			return;
-		}
-		
-		protected String onProgress(String s){
-			//Log.d(TAG, "Onprogress");
-			return s;			
-		}
-
-	}
-	
-	private class TextToAudio extends AsyncTask<String, String, String>{
-		
-		@Override
-		protected String doInBackground(String...strings ) {
-			if(audioFile != "")
-			{
-				String filename = "http://192.168.1.107/glass/"+audioFile;//mysound.mp3";f
-				try {
-					mediaPlayer.setDataSource(filename);
-					mediaPlayer.prepare();
-					mediaPlayer.start();
-					mPlayerCreated = true;
-				} catch (IllegalArgumentException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				} catch (IllegalStateException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				} catch (IOException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				} catch (Exception e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
-
-				return "success " + audioFile; 
-			}
-			else
-				return "fail";
-		}
-		
-		protected void onPostExecute(String s){
-			Log.d(TAG, "played audio");
-			//mediaPlayer.stop();
-			//mediaPlayer.release();
-			//mediaPlayer = null;
 		}
 
 	}
@@ -679,6 +621,7 @@ public class MainActivity extends Activity {
 							}
 			    			//Log.d(TAG, "translation " + translation);
 			    			AsyncTask storeTask = new StoreToDatabase().execute();
+			    			translatedAudio = true;
 			    			
 			    			/*try {
 								String result= (String) storeTask.get();
@@ -830,10 +773,10 @@ public class MainActivity extends Activity {
 	/*
 	 * Function displays text on the screen and then reads it out loud.
 	 */
-	private void showMessageAndSpeak(String message) {
+	/*private void showMessageAndSpeak(String message) {
 		textView.setText(message);
 		startListening();
 		tts.speak(message, TextToSpeech.QUEUE_FLUSH, null);
-	}
+	}*/
 	
 }
